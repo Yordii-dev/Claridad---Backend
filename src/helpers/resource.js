@@ -75,7 +75,13 @@ const compareValues = (fields, body) => {
 
   return true;
 };
-const createEndpoint = (name, table, procedures = {}) => {
+const createEndpoint = (
+  name,
+  table,
+  procedures = {},
+  parametersGet = ["id"],
+  parametersPut = ["id"]
+) => {
   const router = express.Router();
 
   router.get(`/${name}`, auth, async (req, res) => {
@@ -90,6 +96,43 @@ const createEndpoint = (name, table, procedures = {}) => {
         res.json(successResponse({ fields, [name]: results[0] }));
       } else {
         let results = await pool.query(`select * from ${table}`);
+        res.json(successResponse({ fields, [name]: results }));
+      }
+    } catch (error) {
+      if (error instanceof JsonWebTokenError) {
+        res.json(failResponse(`Token invalido al obtener ${name}`));
+        return;
+      }
+      res.json(errorResponse(`Al obtener ${name}`));
+    }
+  });
+  const parametersString = parametersGet.join("/:");
+  router.get(`/${name}/:${parametersString}`, auth, async (req, res) => {
+    try {
+      const auth = jwt.verify(req.token);
+      const id = req.params.id;
+
+      let fields = await pool.query(`SHOW COLUMNS FROM ${table}`);
+      fields = fields.map((el) => ({ name: el.Field, type: el.Type }));
+
+      const pk_field = fields[0].name;
+      if (procedures.getById) {
+        let sp_parametersString = "";
+        parametersGet.forEach((p) => {
+          sp_parametersString += `${req.params[p]},`;
+        });
+        sp_parametersString = sp_parametersString.substring(
+          0,
+          sp_parametersString.lastIndexOf(",")
+        );
+        let results = await pool.query(
+          `call ${procedures.getById}(${`${sp_parametersString}`})`
+        );
+        res.json(successResponse({ fields, [name]: results[0] }));
+      } else {
+        let results = await pool.query(
+          `select * from ${table} where ${pk_field} = ${id}`
+        );
         res.json(successResponse({ fields, [name]: results }));
       }
     } catch (error) {
@@ -115,7 +158,7 @@ const createEndpoint = (name, table, procedures = {}) => {
 
       const response = await pool.query(sql);
       if (response.affectedRows != 0) {
-        res.json(successResponse());
+        res.json(successResponse({ insertId: response.insertId }));
       } else {
         res.json(failResponse(`No se pudo crear ${name}`));
       }
@@ -127,12 +170,16 @@ const createEndpoint = (name, table, procedures = {}) => {
       res.json(errorResponse(`Al crear ${name}` + error));
     }
   });
-  router.put(`/${name}/:id`, auth, async (req, res) => {
+  const parametersStringPut = parametersPut.join("/:");
+  router.put(`/${name}/:${parametersStringPut}`, auth, async (req, res) => {
     try {
       const auth = jwt.verify(req.token);
       let fields = await getTableFields(table);
       let queryValues = formatValuesForUpdate(fields, req.body);
-      let sql = `update ${table} set ${queryValues} where id = ${req.params.id}`;
+
+      let sql = `update ${table} set ${queryValues} where ${parametersStringPut} = ${req.params[parametersStringPut]}`;
+
+      console.log(sql);
 
       const response = await pool.query(sql);
       if (response.affectedRows != 0) {

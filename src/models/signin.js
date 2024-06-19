@@ -10,6 +10,7 @@ const createUser = async ({
   telefono,
   ruc,
   razon_social,
+  directorio_fiscal,
   numero_cuenta,
 }) => {
   const response_datos = await pool.query(
@@ -21,6 +22,7 @@ const createUser = async ({
       telefono,
       ruc,
       razon_social,
+      directorio_fiscal,
       numero_cuenta
     ) 
     values(
@@ -31,6 +33,7 @@ const createUser = async ({
       '${telefono}',
       '${ruc}',
       '${razon_social}',
+      '${directorio_fiscal}',
       '${numero_cuenta}'
     )`
   );
